@@ -1,13 +1,17 @@
 package chat
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type Service interface {
 	Start()
 	CallCmd(cmdName string, args []string) (error, string)
 	Login(username string) (error, string)
 	SendMsg(to, msg string) (error, string)
-	CheckMsg() (error, []string)
+	CheckMsg() (error, *Message)
+	CheckNewMsg() (error, *Message)
 }
 
 type Bot struct {
@@ -15,14 +19,15 @@ type Bot struct {
 	CurrentUser *User
 }
 
-type User struct {
-	Name     string
-	Messages []string
-}
-
 type Message struct {
 	Content string
 	From    string
+}
+
+type User struct {
+	Name           string
+	UnReadMessages []*Message
+	ReadMessages   []*Message
 }
 
 func NewService() Service {
@@ -39,15 +44,23 @@ func (b *Bot) Start() {
 
 func (b *Bot) Login(username string) (error, string) {
 	if !b.hasUser(username) {
-		messages := make([]string, 10)
+		unreadMessages := make([]*Message, 0)
+		readMessages := make([]*Message, 0)
 		user := &User{
-			Name:     username,
-			Messages: messages,
+			Name:           username,
+			UnReadMessages: unreadMessages,
+			ReadMessages:   readMessages,
 		}
 		b.Users[username] = user
 		b.CurrentUser = user
+	} else {
+		user, ok := b.Users[username]
+		if !ok {
+			return errors.New("target user not found"), ""
+		}
+		b.CurrentUser = user
 	}
-	return nil, ""
+	return nil, fmt.Sprintf("%s logged in, %d new messages", username, len(b.CurrentUser.UnReadMessages))
 }
 
 func (b *Bot) SendMsg(to, msg string) (error, string) {
@@ -58,16 +71,40 @@ func (b *Bot) SendMsg(to, msg string) (error, string) {
 	if !ok {
 		return errors.New("target user not found"), ""
 	}
-	user.Messages = append(user.Messages, msg)
+	user.UnReadMessages = append(user.UnReadMessages, &Message{
+		Content: msg,
+		From:    b.CurrentUser.Name,
+	})
 	return nil, "msg sent"
 }
 
-func (b *Bot) CheckMsg() (error, []string) {
+func (b *Bot) CheckNewMsg() (error, *Message) {
 	if b.CurrentUser == nil {
-		return errors.New("please login First"), []string{}
+		return errors.New("please login First"), &Message{}
 	}
-	messages := b.CurrentUser.Messages
-	return nil, messages
+	messages := b.CurrentUser.UnReadMessages
+	if len(messages) > 0 {
+		message := messages[len(messages)-1]
+		return nil, message
+	}
+	return nil, nil
+}
+
+func (b *Bot) CheckMsg() (error, *Message) {
+	if b.CurrentUser == nil {
+		return errors.New("please login First"), &Message{}
+	}
+	var message *Message
+	messages := b.CurrentUser.UnReadMessages
+	unReadCount := len(messages)
+	if unReadCount > 0 {
+		message = messages[unReadCount-1]
+		b.CurrentUser.ReadMessages = append(b.CurrentUser.ReadMessages, message)
+		b.CurrentUser.UnReadMessages = b.CurrentUser.UnReadMessages[0 : unReadCount-1]
+		fmt.Println(b.CurrentUser.ReadMessages)
+		fmt.Println(b.CurrentUser.UnReadMessages)
+	}
+	return nil, message
 }
 
 func (b *Bot) hasUser(username string) bool {
@@ -84,9 +121,11 @@ func (b *Bot) CallCmd(cmdName string, args []string) (error, string) {
 		err, output := b.SendMsg(args[0], args[1])
 		return err, output
 	case "read":
-		err, outputs := b.CheckMsg()
-		output := outputs[0]
-		return err, output
+		err, message := b.CheckNewMsg()
+		if message == nil {
+			return err, fmt.Sprintf("you don't have any new messages")
+		}
+		return err, fmt.Sprintf("from %s: %s", message.From, message.Content)
 	case "reply":
 		err, output := b.SendMsg("", args[0])
 		return err, output

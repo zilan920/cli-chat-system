@@ -6,6 +6,7 @@ import (
 	"github.com/zilan920/cli-chat-system/pkg/chat"
 	"os"
 	"strings"
+	"sync"
 )
 
 var allowedCmd = map[string]int{
@@ -18,27 +19,33 @@ var allowedCmd = map[string]int{
 }
 
 func main() {
-	reader := bufio.NewReader(os.Stdin)
-	chatSvc := chat.NewService()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
-	for {
-		fmt.Print(">-")
-		text, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("   something went error", err)
-			continue
-		}
-		funcName, args := getCmd(text)
-		if funcName != "" {
-			fmt.Println("   get command", funcName)
-			err, output := chatSvc.CallCmd(funcName, args)
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		chatSvc := chat.NewService()
+		for {
+			fmt.Print(">>-")
+			text, err := reader.ReadString('\n')
+			fmt.Print("  <<-")
 			if err != nil {
-				fmt.Println("   error: ", err.Error())
+				fmt.Println("  something went error", err)
 				continue
 			}
-			fmt.Println(output)
+			funcName, args := getCmd(strings.TrimSuffix(text, "\n"))
+			if funcName != "" {
+				err, output := chatSvc.CallCmd(funcName, args)
+				if err != nil {
+					fmt.Println("  error: ", err.Error())
+					continue
+				}
+				fmt.Println(output)
+			}
 		}
-	}
+		wg.Done()
+	}()
+	wg.Wait()
 }
 
 func getCmd(input string) (funcName string, args []string) {
