@@ -13,10 +13,14 @@ type Service interface {
 	CheckMsg() (error, *Message)
 	CheckNewMsg() (error, *Message)
 }
+type BotContext struct {
+	Message *Message
+}
 
 type Bot struct {
 	Users       map[string]*User
 	CurrentUser *User
+	Context     *BotContext
 }
 
 type Message struct {
@@ -60,6 +64,7 @@ func (b *Bot) Login(username string) (error, string) {
 		}
 		b.CurrentUser = user
 	}
+	b.Context = nil
 	return nil, fmt.Sprintf("%s logged in, %d new messages", username, len(b.CurrentUser.UnReadMessages))
 }
 
@@ -78,7 +83,7 @@ func (b *Bot) SendMsg(to, msg string) (error, string) {
 	return nil, "msg sent"
 }
 
-func (b *Bot) CheckNewMsg() (error, *Message) {
+func (b *Bot) CheckMsg() (error, *Message) {
 	if b.CurrentUser == nil {
 		return errors.New("please login First"), &Message{}
 	}
@@ -90,7 +95,7 @@ func (b *Bot) CheckNewMsg() (error, *Message) {
 	return nil, nil
 }
 
-func (b *Bot) CheckMsg() (error, *Message) {
+func (b *Bot) CheckNewMsg() (error, *Message) {
 	if b.CurrentUser == nil {
 		return errors.New("please login First"), &Message{}
 	}
@@ -101,8 +106,9 @@ func (b *Bot) CheckMsg() (error, *Message) {
 		message = messages[unReadCount-1]
 		b.CurrentUser.ReadMessages = append(b.CurrentUser.ReadMessages, message)
 		b.CurrentUser.UnReadMessages = b.CurrentUser.UnReadMessages[0 : unReadCount-1]
-		fmt.Println(b.CurrentUser.ReadMessages)
-		fmt.Println(b.CurrentUser.UnReadMessages)
+		b.Context = &BotContext{
+			Message: message,
+		}
 	}
 	return nil, message
 }
@@ -127,10 +133,16 @@ func (b *Bot) CallCmd(cmdName string, args []string) (error, string) {
 		}
 		return err, fmt.Sprintf("from %s: %s", message.From, message.Content)
 	case "reply":
-		err, output := b.SendMsg("", args[0])
+		if b.Context == nil {
+			return errors.New("no reply target"), ""
+		}
+		err, output := b.SendMsg(b.Context.Message.From, args[0])
 		return err, output
 	case "forward":
-		err, output := b.SendMsg("", args[0])
+		if b.Context == nil {
+			return errors.New("no forward target"), ""
+		}
+		err, output := b.SendMsg(args[0], b.Context.Message.Content)
 		return err, output
 	case "broadcast":
 		err, output := b.SendMsg("", args[0])

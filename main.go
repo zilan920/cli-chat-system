@@ -34,7 +34,11 @@ func main() {
 				continue
 			}
 			funcName, args := getCmd(strings.TrimSuffix(text, "\n"))
-			if funcName != "" {
+			if funcName == "exit" {
+				fmt.Println("bye ~")
+				wg.Done()
+				break
+			} else if funcName != "" {
 				err, output := chatSvc.CallCmd(funcName, args)
 				if err != nil {
 					fmt.Println("  error: ", err.Error())
@@ -43,7 +47,6 @@ func main() {
 				fmt.Println(output)
 			}
 		}
-		wg.Done()
 	}()
 	wg.Wait()
 }
