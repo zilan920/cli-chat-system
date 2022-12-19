@@ -1,5 +1,7 @@
 package chat
 
+import "fmt"
+
 type Service interface {
 	Start()
 	HasUser(username string) bool
@@ -31,7 +33,7 @@ func NewService() Service {
 	users := make(map[string]*User)
 	return &Bot{
 		Users:   users,
-		Tenants: nil,
+		Tenants: map[string]ServiceTenant{},
 	}
 }
 
@@ -67,10 +69,12 @@ func (b *Bot) CreateUser(username string) *User {
 }
 
 func (b *Bot) RegisterTenant(username string, tenant ServiceTenant) error {
+	b.Tenants[username] = tenant
 	return nil
 }
 
 func (b *Bot) UnRegisterTenant(username string) error {
+	delete(b.Tenants, username)
 	return nil
 }
 
@@ -79,6 +83,9 @@ func (b *Bot) SendMsg(target *User, msg, from string) error {
 		Content: msg,
 		From:    from,
 	})
+	if tenant, ok := b.Tenants[target.Name]; ok {
+		tenant.Push(fmt.Sprintf("you have a new message from %s \n", from))
+	}
 	return nil
 }
 

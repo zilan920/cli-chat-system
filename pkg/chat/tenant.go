@@ -13,6 +13,7 @@ type ServiceTenant interface {
 	CheckMsg() (error, *Message)
 	CheckNewMsg() (error, *Message)
 	Bye()
+	Push(msg string)
 }
 
 type TenantContext struct {
@@ -124,6 +125,10 @@ func (t *Tenant) CallCmd(cmdName string, args []string) (error, string) {
 	default:
 		return errors.New("invalid cmd"), ""
 	}
+}
+
+func (t *Tenant) Push(msg string) {
+	t.conn.Write([]byte(msg))
 }
 
 func (t *Tenant) Bye() {
