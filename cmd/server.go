@@ -62,10 +62,11 @@ func handleConn(conn net.Conn, chatSvc chat.Service, wg *sync.WaitGroup) {
 	if !ok {
 		fmt.Println("tcp conn failed")
 	}
-	fd, err := s.File()
+	f, err := s.File()
 	if err != nil {
 		fmt.Println("Get Fd failed")
 	}
+	landlord := chat.NewTenant(int(f.Fd()), chatSvc, conn) // tenant 摇身一变成了二房东
 	for {
 		reader := bufio.NewReader(conn)
 		fmt.Println("service started")
@@ -80,10 +81,11 @@ func handleConn(conn net.Conn, chatSvc chat.Service, wg *sync.WaitGroup) {
 		if funcName == "exit" {
 			conn.Write([]byte("bye ~\n"))
 			conn.Close()
+			landlord.Bye()
 			wg.Done()
 			break
 		} else if funcName != "" {
-			err, output := chatSvc.CallCmd(funcName, args)
+			err, output := landlord.CallCmd(funcName, args)
 			if err != nil {
 				fmt.Println("  error: ", err.Error())
 				continue

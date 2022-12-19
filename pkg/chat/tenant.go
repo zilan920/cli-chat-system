@@ -3,6 +3,7 @@ package chat
 import (
 	"errors"
 	"fmt"
+	"net"
 )
 
 type ServiceTenant interface {
@@ -11,6 +12,7 @@ type ServiceTenant interface {
 	SendMsg(to, msg string) (error, string)
 	CheckMsg() (error, *Message)
 	CheckNewMsg() (error, *Message)
+	Bye()
 }
 
 type TenantContext struct {
@@ -18,51 +20,45 @@ type TenantContext struct {
 }
 
 type Tenant struct {
+	fd          int
 	svc         Service
+	conn        net.Conn
 	CurrentUser *User
 	Context     *TenantContext
 }
 
-func NewTenant(svc Service) ServiceTenant {
+func NewTenant(fd int, svc Service, conn net.Conn) ServiceTenant {
 	return &Tenant{
-		svc: svc,
+		fd:   fd,
+		svc:  svc,
+		conn: conn,
 	}
 }
 
 func (t *Tenant) Login(username string) (error, string) {
 	if !t.svc.HasUser(username) {
-		unreadMessages := make([]*Message, 0)
-		readMessages := make([]*Message, 0)
-		user := &User{
-			Name:           username,
-			UnReadMessages: unreadMessages,
-			ReadMessages:   readMessages,
-		}
-		t.Users[username] = user
+		user := t.svc.CreateUser(username)
 		t.CurrentUser = user
 	} else {
-		user, ok := t.Users[username]
-		if !ok {
-			return errors.New("target user not found"), ""
-		}
+		user := t.svc.GetUser(username)
 		t.CurrentUser = user
 	}
 	t.Context = nil
-	return nil, fmt.Sprintf("%s logged in, %d new messages", username, len(b.CurrentUser.UnReadMessages))
+	_ = t.svc.RegisterTenant(username, t)
+	return nil, fmt.Sprintf("%s logged in, %d new messages", username, len(t.CurrentUser.UnReadMessages))
 }
 
 func (t *Tenant) SendMsg(to, msg string) (error, string) {
 	if t.CurrentUser == nil {
 		return errors.New("please login First"), ""
 	}
-	user, ok := t.Users[to]
-	if !ok {
-		return errors.New("target user not found"), ""
+	if !t.svc.HasUser(to) {
+		return errors.New("target user not exists"), ""
 	}
-	user.UnReadMessages = append(user.UnReadMessages, &Message{
-		Content: msg,
-		From:    b.CurrentUser.Name,
-	})
+	err := t.svc.SendMsg(t.svc.GetUser(to), msg, t.CurrentUser.Name)
+	if err != nil {
+		return err, ""
+	}
 	return nil, "msg sent"
 }
 
@@ -89,7 +85,7 @@ func (t *Tenant) CheckNewMsg() (error, *Message) {
 		message = messages[unReadCount-1]
 		t.CurrentUser.ReadMessages = append(t.CurrentUser.ReadMessages, message)
 		t.CurrentUser.UnReadMessages = t.CurrentUser.UnReadMessages[0 : unReadCount-1]
-		t.Context = &BotContext{
+		t.Context = &TenantContext{
 			Message: message,
 		}
 	}
@@ -127,5 +123,11 @@ func (t *Tenant) CallCmd(cmdName string, args []string) (error, string) {
 		return err, output
 	default:
 		return errors.New("invalid cmd"), ""
+	}
+}
+
+func (t *Tenant) Bye() {
+	if t.CurrentUser != nil {
+		_ = t.svc.UnRegisterTenant(t.CurrentUser.Name)
 	}
 }
