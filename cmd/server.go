@@ -27,13 +27,16 @@ func main() {
 	defer func(listener net.Listener) {
 		listener.Close()
 	}(listener)
+
 	chatSvc := chat.NewService()
+
 	wg := sync.WaitGroup{}
 	for {
 		wg.Add(1)
 		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println("listen error", err)
+			wg.Done()
 			return
 		}
 		go handleConn(conn, chatSvc, &wg)
@@ -55,18 +58,28 @@ func getCmd(input string) (funcName string, args []string) {
 
 func handleConn(conn net.Conn, chatSvc chat.Service, wg *sync.WaitGroup) {
 	wg.Add(1)
+	s, ok := conn.(*net.TCPConn)
+	if !ok {
+		fmt.Println("tcp conn failed")
+	}
+	fd, err := s.File()
+	if err != nil {
+		fmt.Println("Get Fd failed")
+	}
 	for {
 		reader := bufio.NewReader(conn)
 		fmt.Println("service started")
 		text, err1 := reader.ReadString('\n')
 		if err1 != nil {
 			fmt.Println("read error", err1)
-			continue
+			wg.Done()
+			break
 		}
 		fmt.Println(text)
 		funcName, args := getCmd(strings.TrimSuffix(text, "\n"))
 		if funcName == "exit" {
 			conn.Write([]byte("bye ~\n"))
+			conn.Close()
 			wg.Done()
 			break
 		} else if funcName != "" {
