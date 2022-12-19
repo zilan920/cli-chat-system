@@ -1,6 +1,10 @@
 # cli-chat-system
 
-> This is a test from a interviewer .
+> 这是来自游族的一道简单作业，原文见最后
+
+-   运行方式
+  - 启动服务端  go run cmd/server.go
+  - 启动客户端  go run cmd/client.go
 
 ```
 Use your preferred language to build a program to support following activities through command line
